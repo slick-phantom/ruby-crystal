@@ -1,0 +1,162 @@
+# .github/workflows/pages.yml
+name: Deploy Guides to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'guides/**'
+      - '*.md'
+      - 'assets/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build HTML Guides
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Create output directory
+        run: mkdir -p _site
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
+      - name: Copy assets
+        run: |
+          if [ -d "assets" ]; then
+            cp -r assets _site/
+          fi
+
+      - name: Create main index
+        run: |
+          cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Crystal for Rubyists</title>
+            <link rel="stylesheet" href="/assets/style.css">
+          </head>
+          <body>
+            <div class="nav">
+              <a href="/">Home</a>
+              <a href="/guides/">Guides</a>
+              <a href="https://gitlab.com/telegem-cr/telecr">telecr</a>
+              <a href="https://github.com/gems/tgauth">tg-auth</a>
+              <a href="https://gitlab.com/ruby-telegem/telegem">telegem</a>
+            </div>
+            
+            <h1>Crystal for Rubyists</h1>
+            <p>A survival guide by someone who failed 64 pipelines so you don't have to.</p>
+            
+            <h2>Guides</h2>
+            <ul id="guide-list">
+              <li><a href="/guides/quick-comparison.html">Quick Comparison: Ruby vs Crystal</a></li>
+              <li><a href="/guides/syntax-pitfalls.html">Syntax Pitfalls (The &. Problem and More)</a></li>
+              <li><a href="/guides/type-system.html">The Type System: Friend or Foe</a></li>
+              <li><a href="/guides/collections.html">Hashes, NamedTuples, and Collections</a></li>
+              <li><a href="/guides/modules-classes.html">Modules, Classes, and Namespaces</a></li>
+              <li><a href="/guides/require-order.html">Require Order and Project Structure</a></li>
+              <li><a href="/guides/common-errors.html">Common Errors Decoded</a></li>
+              <li><a href="/guides/why-crystal.html">Why Crystal is Actually Amazing</a></li>
+            </ul>
+            
+            <div class="footer">
+              <p>Written by slick_phantom • <a href="https://gitlab.com/telegem-cr">telegem-cr</a></p>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Convert guides to HTML
+        run: |
+          mkdir -p _site/guides
+          
+          # Create guides index
+          cat > _site/guides/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Guides - Crystal for Rubyists</title>
+            <link rel="stylesheet" href="/assets/style.css">
+          </head>
+          <body>
+            <div class="nav">
+              <a href="/">Home</a>
+              <a href="/guides/">Guides</a>
+              <a href="https://gitlab.com/telegem-cr/telecr">telecr</a>
+              <a href="https://github.com/gems/tgauth">tg-auth</a>
+              <a href="https://gitlab.com/ruby-telegem/telegem">telegem</a>
+            </div>
+            
+            <h1>Guides</h1>
+            <ul>
+              <li><a href="quick-comparison.html">Quick Comparison: Ruby vs Crystal</a></li>
+              <li><a href="syntax-pitfalls.html">Syntax Pitfalls (The &. Problem and More)</a></li>
+              <li><a href="type-system.html">The Type System: Friend or Foe</a></li>
+              <li><a href="collections.html">Hashes, NamedTuples, and Collections</a></li>
+              <li><a href="modules-classes.html">Modules, Classes, and Namespaces</a></li>
+              <li><a href="require-order.html">Require Order and Project Structure</a></li>
+              <li><a href="common-errors.html">Common Errors Decoded</a></li>
+              <li><a href="why-crystal.html">Why Crystal is Actually Amazing</a></li>
+            </ul>
+            
+            <div class="footer">
+              <p><a href="/">← Back to home</a></p>
+            </div>
+          </body>
+          </html>
+          EOF
+          
+          # Convert each markdown file
+          for file in guides/*.md; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file" .md)
+              echo "Converting $file to _site/guides/${filename}.html"
+              
+              pandoc "$file" \
+                -s \
+                --metadata title="Crystal for Rubyists - ${filename}" \
+                -H <(echo '<link rel="stylesheet" href="/assets/style.css">') \
+                -B <(echo '<div class="nav"><a href="/">Home</a> <a href="/guides/">Guides</a> <a href="https://gitlab.com/telegem-cr/telecr">telecr</a> <a href="https://github.com/gems/tgauth">tg-auth</a> <a href="https://gitlab.com/ruby-telegem/telegem">telegem</a></div>') \
+                -A <(echo '<div class="footer"><p><a href="/guides/">← Back to guides</a> • Written by slick_phantom</p></div>') \
+                -o "_site/guides/${filename}.html"
+            fi
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
